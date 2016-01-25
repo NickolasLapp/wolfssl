@@ -82,6 +82,18 @@
     #endif
 #endif
 
+#ifdef WOLFSSL_CUSTOM_LOCKING_CB
+typedef void (*wolfssl_locking_cb)(int mode, int type, const char* file, int line);
+typedef void (*wolfssl_dynamic_locking_cb)(int mode, void *l,
+        const char* file, int line);
+typedef void (*wolfssl_dynamic_create_cb)(const char*file, int line);
+typedef void (*wolfssl_dynamic_free_cb)(void *l, const char *file, int line);
+
+void RegisterCustomLock(wolfssl_locking_cb lock);
+void RegisterCustomDynLock(wolfssl_dynamic_locking_cb lock);
+void RegisterCustomDynCreate(wolfssl_dynamic_create_cb create);
+void RegisterCustomDynDestroy(wolfssl_dynamic_free_cb free);
+#endif /* WOLFSSL_CUSTOM_LOCKING_CB */
 
 #ifdef SINGLE_THREADED
     typedef int wolfSSL_Mutex;
@@ -168,6 +180,11 @@ WOLFSSL_LOCAL int InitMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int FreeMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int LockMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int UnLockMutex(wolfSSL_Mutex*);
+
+WOLFSSL_LOCAL int InitMutex_internal(wolfSSL_Mutex*);
+WOLFSSL_LOCAL int FreeMutex_internal(wolfSSL_Mutex*);
+WOLFSSL_LOCAL int LockMutex_internal(wolfSSL_Mutex*);
+WOLFSSL_LOCAL int UnLockMutex_internal(wolfSSL_Mutex*);
 
 /* main crypto initialization function */
 WOLFSSL_API int wolfCrypt_Init(void);

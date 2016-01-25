@@ -8072,7 +8072,11 @@ int wolfSSL_set_compression(WOLFSSL* ssl)
 
     void wolfSSL_set_locking_callback(void (*f)(int, int, const char*, int))
     {
+#ifdef WOLFSSL_CUSTOM_LOCKING_CB
+        RegisterCustomLock(f);
+#else
         (void)f;
+#endif
     }
 
     void wolfSSL_set_id_callback(unsigned long (*f)(void))
