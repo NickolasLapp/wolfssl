@@ -95,7 +95,13 @@ int wolfCrypt_Init()
 
     int InitMutex(wolfSSL_Mutex* m)
     {
-        return InitMutex_internal(m);
+        if(dyn_create_cb) {
+           dyn_create_cb(NULL,0);
+           return 0;
+        }
+        else {
+           return InitMutex_internal(m);
+        }
     }
 
     int FreeMutex(wolfSSL_Mutex *m)
@@ -105,12 +111,20 @@ int wolfCrypt_Init()
 
     int LockMutex(wolfSSL_Mutex *m)
     {
-        return LockMutex_internal(m);
+        if (dyn_locking_cb)
+            return dyn_locking_cb(WOLFSSL_LOCK, m, NULL, 0);
+        else if(locking_cb)
+            return locking_cb(WOLFSSL_LOCK,);
+        else
+            return LockMutex_internal(m);
     }
 
     int UnLockMutex(wolfSSL_Mutex *m)
     {
-        return UnLockMutex_internal(m);
+        if(locking_cb)
+            return locking_cb(WOLFSSL_LOCK);
+        else
+            return UnLockMutex_internal(m);
     }
 #else
     int InitMutex(wolfSSL_Mutex* m)
