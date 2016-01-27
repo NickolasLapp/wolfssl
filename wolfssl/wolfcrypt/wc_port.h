@@ -89,10 +89,17 @@ typedef void (*wolfssl_dynamic_locking_cb)(int mode, void *l,
 typedef void (*wolfssl_dynamic_create_cb)(const char*file, int line);
 typedef void (*wolfssl_dynamic_free_cb)(void *l, const char *file, int line);
 
-void RegisterCustomLock(wolfssl_locking_cb lock);
-void RegisterCustomDynLock(wolfssl_dynamic_locking_cb lock);
-void RegisterCustomDynCreate(wolfssl_dynamic_create_cb create);
-void RegisterCustomDynDestroy(wolfssl_dynamic_free_cb free);
+struct WOLFSSL_dynlock_value;
+
+WOLFSSL_LOCAL void RegisterCustomLock(wolfssl_locking_cb lock);
+WOLFSSL_LOCAL void RegisterCustomDynLock(wolfssl_dynamic_locking_cb lock);
+WOLFSSL_LOCAL void RegisterCustomDynCreate(wolfssl_dynamic_create_cb create);
+WOLFSSL_LOCAL void RegisterCustomDynDestroy(wolfssl_dynamic_free_cb free);
+
+WOLFSSL_LOCAL void CustomLock(int, int);
+WOLFSSL_LOCAL void CustomDynLock(int);
+WOLFSSL_LOCAL void CustomDynCreate(int);
+WOLFSSL_LOCAL void CustomDynDestroy(int);
 #endif /* WOLFSSL_CUSTOM_LOCKING_CB */
 
 #ifdef SINGLE_THREADED
@@ -180,11 +187,6 @@ WOLFSSL_LOCAL int InitMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int FreeMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int LockMutex(wolfSSL_Mutex*);
 WOLFSSL_LOCAL int UnLockMutex(wolfSSL_Mutex*);
-
-WOLFSSL_LOCAL int InitMutex_internal(wolfSSL_Mutex*);
-WOLFSSL_LOCAL int FreeMutex_internal(wolfSSL_Mutex*);
-WOLFSSL_LOCAL int LockMutex_internal(wolfSSL_Mutex*);
-WOLFSSL_LOCAL int UnLockMutex_internal(wolfSSL_Mutex*);
 
 /* main crypto initialization function */
 WOLFSSL_API int wolfCrypt_Init(void);

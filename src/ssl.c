@@ -10830,21 +10830,29 @@ int wolfSSL_COMP_add_compression_method(int method, void* data)
 void wolfSSL_set_dynlock_create_callback(WOLFSSL_dynlock_value* (*f)(
                                                           const char*, int))
 {
-    (void)f;
+    RegisterCustomDynLockCreate(f);
 }
 
 
 void wolfSSL_set_dynlock_lock_callback(
              void (*f)(int, WOLFSSL_dynlock_value*, const char*, int))
 {
+#ifdef WOLFSSL_CUSTOM_LOCKING_CB
+    RegisterCustomDynLock(f);
+#else
     (void)f;
+#endif
 }
 
 
 void wolfSSL_set_dynlock_destroy_callback(
                   void (*f)(WOLFSSL_dynlock_value*, const char*, int))
 {
+#ifdef WOLFSSL_CUSTOM_LOCKING_CB
+    RegisterCustomDynDestroy(f);
+#else
     (void)f;
+#endif
 }
 
 
@@ -17149,6 +17157,17 @@ void wolfSSL_sk_X509_pop_free(STACK_OF(WOLFSSL_X509)* sk, void f (WOLFSSL_X509*)
     WOLFSSL_ENTER("wolfSSL_sk_X509_pop_free");
     WOLFSSL_STUB("wolfSSL_sk_X509_pop_free");
 }
+
+void wolfSSL_CRYPTO_r_lock(int lockId)
+{
+
+}
+
+void wolfSSL_CRYPTO_w_lock(int lockId)
+{
+
+}
+
 
 #endif /* OPENSSL_EXTRA and HAVE_STUNNEL */
 
