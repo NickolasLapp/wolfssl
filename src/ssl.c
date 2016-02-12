@@ -1206,7 +1206,10 @@ WOLFSSL_API int wolfSSL_get_SessionTicket(WOLFSSL* ssl,
         return BAD_FUNC_ARG;
 
     if (ssl->session.ticketLen <= *bufSz) {
-        XMEMCPY(buf, ssl->session.ticket, ssl->session.ticketLen);
+        if (ssl->session.isDynamic)
+            XMEMCPY(buf, ssl->session.dynTicket, ssl->session.ticketLen);
+        else
+            XMEMCPY(buf, ssl->session.ticket, ssl->session.ticketLen);
         *bufSz = ssl->session.ticketLen;
     }
     else
@@ -1217,7 +1220,7 @@ WOLFSSL_API int wolfSSL_get_SessionTicket(WOLFSSL* ssl,
 
 WOLFSSL_API int wolfSSL_set_SessionTicket(WOLFSSL* ssl, byte* buf, word32 bufSz)
 {
-    if (ssl == NULL || (buf == NULL && bufSz > 0))
+    if (ssl == NULL || (buf == NULL && bufSz > 0) || bufSz > SESSION_TICKET_LEN)
         return BAD_FUNC_ARG;
 
     if (bufSz > 0)
@@ -6618,7 +6621,11 @@ int AddSession(WOLFSSL* ssl)
 
 #ifdef HAVE_SESSION_TICKET
     SessionCache[row].Sessions[idx].ticketLen     = ssl->session.ticketLen;
-    XMEMCPY(SessionCache[row].Sessions[idx].ticket,
+    if (ssl->session.isDynamic)
+        XMEMCPY(SessionCache[row].Sessions[idx].ticket,
+                                   ssl->session.dynTicket, ssl->session.ticketLen);
+    else
+        XMEMCPY(SessionCache[row].Sessions[idx].ticket,
                                    ssl->session.ticket, ssl->session.ticketLen);
 #endif
 
