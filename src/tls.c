@@ -3186,8 +3186,6 @@ WOLFSSL_LOCAL SessionTicket* TLSX_SessionTicket_Create(word32 lifetime,
 WOLFSSL_LOCAL void TLSX_SessionTicket_Free(SessionTicket* ticket)
 {
     if (ticket) {
-        if (ticket.isDynamic)
-            XFREE(ticket->dynTicket, NULL, DYNAMIC_TYPE_TLSX);
         XFREE(ticket->data, NULL, DYNAMIC_TYPE_TLSX);
         XFREE(ticket,       NULL, DYNAMIC_TYPE_TLSX);
     }
