@@ -2214,6 +2214,10 @@ void SSL_ResourceFree(WOLFSSL* ssl)
 #if defined(KEEP_PEER_CERT) || defined(GOAHEAD_WS)
     FreeX509(&(ssl->peerCert));   /* clang thinks this frees ssl itslef */
 #endif
+#ifdef HAVE_SESSION_TICKET
+    if (ssl->session.dynTicket)
+        XFREE(ssl->session.dynTicket, ssl->heap, DYNAMIC_TYPE_SESSION_TICK);
+#endif
 }
 
 #ifdef WOLFSSL_TI_HASH
@@ -13781,6 +13785,7 @@ int DoSessionTicket(WOLFSSL* ssl,
     if ((*inOutIdx - begin) + length > size)
         return BUFFER_ERROR;
 
+    WOLFSSL_MSG("I bet the error is here, before first memcpy");
     /* If the received ticket including its length is greater than
      * a length value, the save it. Otherwise, don't save it. */
     if (length > 0) {
@@ -13799,8 +13804,9 @@ int DoSessionTicket(WOLFSSL* ssl,
         }
         /* Create a fake sessionID based on the ticket, this will
          * supercede the existing session cache info. */
-        ssl->options.haveSessionId = 1;
+    ssl->options.haveSessionId = 1;
 
+    WOLFSSL_MSG("Was wrong, made it to the 2nd memcpy. Perhaps arrays too small");
     if (ssl->session.isDynamic)
         XMEMCPY(ssl->arrays->sessionID,
                                  ssl->session.dynTicket + length - ID_LEN, ID_LEN);
@@ -13808,7 +13814,9 @@ int DoSessionTicket(WOLFSSL* ssl,
         XMEMCPY(ssl->arrays->sessionID,
                                  ssl->session.ticket + length - ID_LEN, ID_LEN);
 #ifndef NO_SESSION_CACHE
+        WOLFSSL_MSG("Could be before adding to cache?");
         AddSession(ssl);
+        WOLFSSL_MSG("Made it back from cache...");
 #endif
 
     }

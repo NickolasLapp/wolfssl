@@ -1226,6 +1226,7 @@ WOLFSSL_API int wolfSSL_set_SessionTicket(WOLFSSL* ssl, byte* buf, word32 bufSz)
     if (bufSz > 0)
         XMEMCPY(ssl->session.ticket, buf, bufSz);
     ssl->session.ticketLen = (word16)bufSz;
+    ssl->session.isDynamic = 0;
 
     return SSL_SUCCESS;
 }
@@ -6620,13 +6621,32 @@ int AddSession(WOLFSSL* ssl)
     SessionCache[row].Sessions[idx].bornOn  = LowResTimer();
 
 #ifdef HAVE_SESSION_TICKET
-    SessionCache[row].Sessions[idx].ticketLen     = ssl->session.ticketLen;
-    if (ssl->session.isDynamic)
-        XMEMCPY(SessionCache[row].Sessions[idx].ticket,
+    if (ssl->session.isDynamic) {
+        WOLFSSL_MSG("We have a dynamic ticket to copy and it's breaking things?");
+
+        if (!SessionCache[row].Sessions[idx].dynTicket) {
+            SessionCache[row].Sessions[idx].dynTicket = XMALLOC(
+                ssl->session.ticketLen, ssl->heap, DYNAMIC_TYPE_SESSION_TICK);
+            if (!SessionCache[row].Sessions[idx].dynTicket)
+                return MEMORY_E;
+        } else if (SessionCache[row].Sessions[idx].ticketLen < ssl->session.ticketLen) {
+            XFREE(SessionCache[row].Sessions[idx].dynTicket,
+                   ssl->heap, DYNAMIC_TYPE_SESS_TICK);
+            SessionCache[row].Sessions[idx].dynTicket = XMALLOC(
+                ssl->session.ticketLen, ssl->heap, DYNAMIC_TYPE_SESSION_TICK);
+            if (!SessionCache[row].Sessions[idx].dynTicket)
+                return MEMORY_E;
+        }
+        XMEMCPY(SessionCache[row].Sessions[idx].dynTicket,
                                    ssl->session.dynTicket, ssl->session.ticketLen);
-    else
+        SessionCache[row].Sessions[idx].isDynamic = 1;
+    }
+    else {
         XMEMCPY(SessionCache[row].Sessions[idx].ticket,
                                    ssl->session.ticket, ssl->session.ticketLen);
+    }
+    SessionCache[row].Sessions[idx].ticketLen     = ssl->session.ticketLen;
+    WOLFSSL_MSG("Nope, made it through copying to sessioncache?");
 #endif
 
 #ifdef SESSION_CERTS
