@@ -10800,12 +10800,18 @@ static void PickHashSigAlgo(WOLFSSL* ssl,
 #ifdef HAVE_SESSION_TICKET
         if (ssl->options.resuming && ssl->session.ticketLen > 0) {
             SessionTicket* ticket;
+            byte* ticketData;
+
+            ticketData = ssl->session.isDynamic ?
+                         ssl->session.dynTicket :
+                         ssl->session.ticket;
 
             ticket = TLSX_SessionTicket_Create(0,
-                                   ssl->session.ticket, ssl->session.ticketLen);
+                                   ticketData, ssl->session.ticketLen);
             if (ticket == NULL) return MEMORY_E;
 
             ret = TLSX_UseSessionTicket(&ssl->extensions, ticket);
+
             if (ret != SSL_SUCCESS) return ret;
 
             idSz = 0;
