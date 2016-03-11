@@ -10830,7 +10830,11 @@ int wolfSSL_COMP_add_compression_method(int method, void* data)
 void wolfSSL_set_dynlock_create_callback(WOLFSSL_dynlock_value* (*f)(
                                                           const char*, int))
 {
+#ifdef WOLFSSL_CUSTOM_LOCKING_CB
     RegisterCustomDynLockCreate(f);
+#else
+    (void)f;
+#endif
 }
 
 
@@ -17160,12 +17164,12 @@ void wolfSSL_sk_X509_pop_free(STACK_OF(WOLFSSL_X509)* sk, void f (WOLFSSL_X509*)
 
 void wolfSSL_CRYPTO_r_lock(int lockId)
 {
-
+    (void) lockId;
 }
 
 void wolfSSL_CRYPTO_w_lock(int lockId)
 {
-
+    (void) lockId;
 }
 
 

@@ -1756,6 +1756,10 @@ WOLFSSL_API WOLFSSL_X509* wolfSSL_X509_STORE_get1_certs(WOLFSSL_X509_STORE_CTX*,
                                                         WOLFSSL_X509_NAME*);
 
 WOLFSSL_API void wolfSSL_sk_X509_pop_free(STACK_OF(WOLFSSL_X509)* sk, void f (WOLFSSL_X509*));
+
+WOLFSSL_API void wolfSSL_CRYPTO_r_lock(int lockId);
+
+WOLFSSL_API void wolfSSL_CRYPTO_w_lock(int lockId);
 #endif /* HAVE_STUNNEL */
 
 #if defined(HAVE_STUNNEL) || defined(WOLFSSL_MYSQL_COMPATIBLE)
