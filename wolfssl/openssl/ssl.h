@@ -498,7 +498,24 @@ typedef WOLFSSL_ASN1_BIT_STRING    ASN1_BIT_STRING;
 #define PSK_MAX_IDENTITY_LEN                 128
 #define ERR_remove_thread_state WOLFSSL_ERR_remove_thread_state
 #define SSL_CTX_clear_options wolfSSL_CTX_clear_options
+#define CRYPTO_w_lock                        wolfSSL_CRYPTO_w_lock
+#define CRYPTO_r_lock                        wolfSSL_CRYPTO_r_lock
+#define CRYPTO_w_unlock                      wolfSSL_CRYPTO_w_unlock
+#define CRYPTO_r_unlock                      wolfSSL_CRYPTO_r_unlock
+#define CRYPTO_READ                          WOLFSSL_CRYPTO_READ
+#define CRYPTO_WRITE                         WOLFSSL_CRYPTO_WRITE
+#define CRYPTO_r_unlock                      wolfSSL_CRYPTO_r_unlock
+#define CRYPTO_get_new_dynlockid             wolfSSL_CRYPTO_get_new_dynlockid
 
+enum {
+    TLS_ST_CR_CERT_REQ,
+    TLS_ST_CR_SRVR_DONE
+} WOLFSSL_HANDSHAKE_STATE;
+
+enum {
+    WOLFSSL_CRYPTO_READ  = 0x1,
+    WOLFSSL_CRYPTO_WRITE = 0x10
+} WOLFSSL_CRYPTO_LOCK_TYPES;
 
 #endif /* HAVE_STUNNEL */
 

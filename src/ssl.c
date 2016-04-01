@@ -16965,7 +16965,7 @@ int wolfSSL_get_state(const WOLFSSL* ssl)
 }
 
 
-void* wolfSSL_sk_X509_NAME_value(STACK_OF(WOLFSSL_X509_NAME)* sk, int i)
+void* wolfSSL_sk_X509_NAME_value(const STACK_OF(WOLFSSL_X509_NAME)* sk, int i)
 {
     (void)sk;
     (void)i;
@@ -16976,7 +16976,7 @@ void* wolfSSL_sk_X509_NAME_value(STACK_OF(WOLFSSL_X509_NAME)* sk, int i)
 }
 
 
-void* wolfSSL_sk_X509_value(STACK_OF(WOLFSSL_X509)* sk, int i)
+void* wolfSSL_sk_X509_value(const STACK_OF(WOLFSSL_X509)* sk, int i)
 {
     (void)sk;
     (void)i;
@@ -17165,14 +17165,45 @@ void wolfSSL_sk_X509_pop_free(STACK_OF(WOLFSSL_X509)* sk, void f (WOLFSSL_X509*)
 void wolfSSL_CRYPTO_r_lock(int lockId)
 {
     (void) lockId;
+/*    WOLFSSL_ENTER("wolfSSL_CRYPTO_r_lock");
+    WOLFSSL_STUB("wolfSSL_CRYPTO_r_lock");*/
 }
 
 void wolfSSL_CRYPTO_w_lock(int lockId)
 {
     (void) lockId;
+/*    WOLFSSL_ENTER("wolfSSL_CRYPTO_w_lock");
+    WOLFSSL_STUB("wolfSSL_CRYPTO_w_lock");*/
 }
 
+void wolfSSL_CRYPTO_r_unlock(int lockId)
+{
+    (void) lockId;
+/*    WOLFSSL_ENTER("wolfSSL_CRYPTO_r_unlock");
+    WOLFSSL_STUB("wolfSSL_CRYPTO_r_unlock");*/
+}
 
+void wolfSSL_CRYPTO_w_unlock(int lockId)
+{
+    (void) lockId;
+/*    WOLFSSL_ENTER("wolfSSL_CRYPTO_w_unlock");
+    WOLFSSL_STUB("wolfSSL_CRYPTO_w_unlock"); */
+}
+
+int wolfSSL_CRYPTO_get_new_dynlockid(void)
+{
+    WOLFSSL_ENTER("wolfSSL_CRYPTO_get_new_dynlockid");
+    WOLFSSL_STUB("wolfSSL_CRYPTO_get_new_dynlockid");
+    return SSL_FAILURE;
+}
+
+STACK_OF(WOLFSSL_X509_NAME) * SSL_get_client_CA_list(const WOLFSSL* ssl)
+{
+    (void) ssl;
+    WOLFSSL_ENTER("SSL_get_client_CA_list");
+    WOLFSSL_STUB("SSL_get_client_CA_list");
+    return NULL;
+}
 #endif /* OPENSSL_EXTRA and HAVE_STUNNEL */
 
 

@@ -1664,7 +1664,7 @@ WOLFSSL_API int PEM_write_bio_WOLFSSL_X509(WOLFSSL_BIO *bp, WOLFSSL_X509 *x);
 #endif /* HAVE_STUNNEL || HAVE_LIGHTY */
 
 
-#ifdef HAVE_STUNNEL
+#if defined(OPENSSL_EXTRA) && defined(HAVE_STUNNEL)
 
 #include <wolfssl/openssl/crypto.h>
 
@@ -1710,9 +1710,9 @@ WOLFSSL_API int  wolfSSL_version(WOLFSSL*);
 
 WOLFSSL_API int wolfSSL_get_state(const WOLFSSL*);
 
-WOLFSSL_API void* wolfSSL_sk_X509_NAME_value(STACK_OF(WOLFSSL_X509_NAME)*, int);
+WOLFSSL_API void* wolfSSL_sk_X509_NAME_value(const STACK_OF(WOLFSSL_X509_NAME)*, int);
 
-WOLFSSL_API void* wolfSSL_sk_X509_value(STACK_OF(WOLFSSL_X509)*, int);
+WOLFSSL_API void* wolfSSL_sk_X509_value(const STACK_OF(WOLFSSL_X509)*, int);
 
 WOLFSSL_API STACK_OF(WOLFSSL_X509)* wolfSSL_get_peer_cert_chain(const WOLFSSL*);
 
@@ -1757,10 +1757,18 @@ WOLFSSL_API WOLFSSL_X509* wolfSSL_X509_STORE_get1_certs(WOLFSSL_X509_STORE_CTX*,
 
 WOLFSSL_API void wolfSSL_sk_X509_pop_free(STACK_OF(WOLFSSL_X509)* sk, void f (WOLFSSL_X509*));
 
-WOLFSSL_API void wolfSSL_CRYPTO_r_lock(int lockId);
+WOLFSSL_API void wolfSSL_CRYPTO_r_lock(int);
 
-WOLFSSL_API void wolfSSL_CRYPTO_w_lock(int lockId);
-#endif /* HAVE_STUNNEL */
+WOLFSSL_API void wolfSSL_CRYPTO_w_lock(int);
+
+WOLFSSL_API void wolfSSL_CRYPTO_r_unlock(int);
+
+WOLFSSL_API void wolfSSL_CRYPTO_w_unlock(int);
+
+WOLFSSL_API int  wolfSSL_CRYPTO_get_new_dynlockid(void);
+
+WOLFSSL_API STACK_OF(WOLFSSL_X509_NAME) * SSL_get_client_CA_list(const WOLFSSL*);
+#endif /* OPENSSL_EXTRA and HAVE_STUNNEL */
 
 #if defined(HAVE_STUNNEL) || defined(WOLFSSL_MYSQL_COMPATIBLE)
 
