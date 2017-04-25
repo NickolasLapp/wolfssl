@@ -4312,8 +4312,9 @@ int aesgcm_test(void)
     if (XMEMCMP(p, resultP, sizeof(resultP)))
         return -71;
 
-    /* QAT only supports 12-byte IV */
-#if !defined(HAVE_FIPS) && !defined(HAVE_INTEL_QA)
+    /* FIPS, QAT and STM32F2/4 HW Crypto only support 12-byte IV */
+#if !defined(HAVE_FIPS) && !defined(HAVE_INTEL_QA) && \
+        !defined(STM32F2_CRYPTO) && !defined(STM32F4_CRYPTO)
     XMEMSET(resultT, 0, sizeof(resultT));
     XMEMSET(resultC, 0, sizeof(resultC));
     XMEMSET(resultP, 0, sizeof(resultP));
@@ -4341,7 +4342,7 @@ int aesgcm_test(void)
         return -232;
     if (XMEMCMP(p, resultP, sizeof(resultP)))
         return -233;
-#endif /* !HAVE_FIPS && !HAVE_INTEL_QA */
+#endif /* !HAVE_FIPS && !HAVE_INTEL_QA && !STM32F2_CRYPTO && !STM32F4_CRYPTO */
 
     wc_AesFree(&enc);
 
