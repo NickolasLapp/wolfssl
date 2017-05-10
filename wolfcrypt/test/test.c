@@ -4232,7 +4232,8 @@ int aesgcm_test(void)
         0xcd, 0xdf, 0x88, 0x53, 0xbb, 0x2d, 0x55, 0x1b
     };
 
-#if !defined(HAVE_FIPS) && !defined(HAVE_INTEL_QA)
+#if !defined(HAVE_FIPS) && !defined(HAVE_INTEL_QA) && \
+        !defined(STM32F2_CRYPTO) && !defined(STM32F4_CRYPTO)
     /* Test Case 12, uses same plaintext and AAD data. */
     const byte k2[] =
     {
@@ -4270,7 +4271,7 @@ int aesgcm_test(void)
         0xdc, 0xf5, 0x66, 0xff, 0x29, 0x1c, 0x25, 0xbb,
         0xb8, 0x56, 0x8f, 0xc3, 0xd3, 0x76, 0xa6, 0xd9
     };
-#endif /* !HAVE_FIPS && !HAVE_INTEL_QA */
+#endif /* !HAVE_FIPS && !HAVE_INTEL_QA && !STM32F2_CRYPTO && !STM32F4_CRYPTO */
 
     byte resultT[sizeof(t1)];
     byte resultP[sizeof(p)];

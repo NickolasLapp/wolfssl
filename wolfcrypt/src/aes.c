@@ -201,11 +201,7 @@
 
 /* Define AES implementation includes and functions */
 #if defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO)
-    /* STM32F2/F4 hardware AES support for CBC, CTR modes */
-    /* STM32F4 GCM supported */
-
-    #define STM32_TAGSZ 16
-    #define STM32_IVSZ 16
+     /* STM32F2/F4 hardware AES support for CBC, CTR modes */
 
 #if defined(WOLFSSL_AES_DIRECT) || defined(HAVE_AESGCM) || defined(HAVE_AESCCM)
     static int wc_AesEncrypt(Aes* aes, const byte* inBlock, byte* outBlock)
@@ -2920,8 +2916,7 @@ int wc_AesEcbDecrypt(Aes* aes, byte* out, const byte* in, word32 sz)
 #endif
 
 /* AES-CTR */
-#ifdef WOLFSSL_AES_COUNTER
-
+#if defined(WOLFSSL_AES_COUNTER) || (defined(HAVE_AESGCM_DECRYPT) && defined(STM32F4_CRYPTO))
     #if defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO)
     #ifdef WOLFSSL_STM32_CUBEMX
         void wc_AesCtrEncrypt(Aes* aes, byte* out, const byte* in, word32 sz)
@@ -2944,12 +2939,12 @@ int wc_AesEcbDecrypt(Aes* aes, byte* out, const byte* in, word32 sz)
             }
             hcryp.Instance = CRYP;
             hcryp.Init.DataType = CRYP_DATATYPE_8B;
-            hcryp.Init.pKey = aes->key;
-            hcryp.Init.pInitVect = aes->reg;
+            hcryp.Init.pKey = (byte*)aes->key;
+            hcryp.Init.pInitVect = (byte*)aes->reg;
 
             HAL_CRYP_Init(&hcryp);
 
-            HAL_CRYP_AESCTR_Encrypt(&hcryp, in, AES_BLOCK_SIZE, out,
+            HAL_CRYP_AESCTR_Encrypt(&hcryp, (byte*)in, sz, out,
                                                             STM32_HAL_TIMEOUT);
 
             HAL_CRYP_DeInit(&hcryp);
@@ -4309,115 +4304,155 @@ int wc_AesGcmEncrypt(Aes* aes, byte* out, const byte* in, word32 sz,
         iv, ivSz, authIn, authInSz, key, keySize, authTag, authTagSz);
 
     return (status == kStatus_Success) ? 0 : AES_GCM_AUTH_E;
-
-#elif ((defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO)) && !defined(WOLFSSL_STM32_CUBEMX))
-    byte *key;
-    uint32_t keySize;
-    int status;
-    byte tag[STM32_TAGSZ];
-    byte scratch[AES_BLOCK_SIZE];
-    byte *dummy = NULL; /* Dummy buffer for gcm decrypt */
-    word32 blocks = sz / AES_BLOCK_SIZE;
-    word32 partial = sz % AES_BLOCK_SIZE;
-    byte *a = NULL;
+#elif (defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO))
+#ifdef WOLFSSL_STM32_CUBEMX
+    CRYP_HandleTypeDef hcryp;
+#else
+    byte keyCopy[AES_BLOCK_SIZE*2];
+#endif /* WOLFSSL_STM32_CUBEMX */
+    int ret=0;
+    int status=0;
+    int blocks = sz/AES_BLOCK_SIZE;
     int i;
+    int partial = sz%AES_BLOCK_SIZE;
+    byte scratch[AES_BLOCK_SIZE];
     byte initialCounter[AES_BLOCK_SIZE];
-    byte ctr[AES_BLOCK_SIZE];
-    byte k[AES_BLOCK_SIZE*2];
+    byte* authInPadded = NULL;
+    byte tag[AES_BLOCK_SIZE];
+    int authPadSz;
 
     /* argument checks */
-    if (aes == NULL || authTagSz > AES_BLOCK_SIZE) {
+    if (aes == NULL || authTagSz > AES_BLOCK_SIZE || ivSz != NONCE_SZ) {
         return BAD_FUNC_ARG;
     }
-
-    key = (byte*)aes->key;
 
     if (authTagSz < WOLFSSL_MIN_AUTH_TAG_SZ) {
         WOLFSSL_MSG("GcmEncrypt authTagSz too small error");
         return BAD_FUNC_ARG;
     }
 
-    status = wc_AesGetKeySize(aes, &keySize);
-    if (status != 0) {
-        return status;
-    }
-
-    dummy = XMALLOC((sz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE, aes->heap,
-        DYNAMIC_TYPE_TMP_BUFFER);
-    a = XMALLOC((authInSz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE, aes->heap,
-        DYNAMIC_TYPE_TMP_BUFFER);
-    if (dummy == NULL || a == NULL) {
-        ret = MEMORY_E;
-        goto err_exit;
-    }
-
-    XMEMSET(a, 0, (authInSz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE);
-    XMEMCPY(a, authIn, authInSz);
-    XMEMSET(dummy, 0, (sz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE);
     XMEMSET(initialCounter, 0, AES_BLOCK_SIZE);
+    XMEMCPY(initialCounter, iv, ivSz);
+    /* CRYPT_AES_GCM starts the IV with 2, first is used for the hash at the end*/
+    initialCounter[AES_BLOCK_SIZE - 1] = 2;
 
-    if (ivSz == NONCE_SZ) {
-        XMEMCPY(initialCounter, iv, ivSz);
-        initialCounter[AES_BLOCK_SIZE - 1] = 1;
-    }
-    else {
-        ret = BAD_FUNC_ARG;
-        goto err_exit;
-    }
-    IncrementGcmCounter(initialCounter);
+    /* STM32 HW AES-GCM requires/assumes inputs are a multiple of block size.
+     * We can avoid this by zero padding (authIn) AAD, but zero-padded plaintext
+     * will be encrypted and output incorrectly, causing a bad authTag.
+     * We will use HW accelerated AES-GCM if plain%AES_BLOCK_SZ==0.
+     * Otherwise, we will use accelerated AES_CTR for encrypt, and then
+     * perform GHASH in software.
+     * See NIST SP 800-38D */
 
-    XMEMCPY(ctr, initialCounter, AES_BLOCK_SIZE);
-    ByteReverseWords((word32 *)k, (word32 *)key, keySize);
+    /* Plaintext is a multiple of block size. Use HW-Acclerated AES_GCM */
+    if(!partial) {
+        byte *key;
+        word32 keySize;
 
-    /* CRYPT_AES_GCM requirs partial block padding of encrypted message
-                                       for deriving correct Auth Tag value */
-    /* For the reasone, AES-GCM here is broken down into AES-CTR(Block Encrypt,
-      partial block with padding), and AES-GCM(Decrypt) for generating AuthTag */
+        key = (byte*)aes->key;
+        ret = wc_AesGetKeySize(aes, &keySize);
+        if (ret != 0)
+            return ret;
+        /* pad authIn if it is not a block multiple */
+        if(authInSz % AES_BLOCK_SIZE != 0) {
+            authPadSz = (authInSz/AES_BLOCK_SIZE+1)*AES_BLOCK_SIZE;
+            /* Need to pad the AAD to a full block with zeros. */
+            authInPadded = XMALLOC(authPadSz, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+            if (authInPadded == NULL) {
+                return MEMORY_E;
+            }
+            XMEMSET(authInPadded, 0, authPadSz);
+            XMEMCPY(authInPadded, authIn, authInSz);
+        } else {
+            authPadSz = authInSz;
+            authInPadded = (byte*)authIn;
+        }
 
-    /* Block AES-CTR Encryption */
-    status = CRYP_AES_CTR(MODE_ENCRYPT, (uint8_t*)initialCounter, (uint8_t*)k,
-        keySize*8, (uint8_t*)in, blocks * AES_BLOCK_SIZE, out);
-    if (status != SUCCESS) {
-        ret = AES_GCM_AUTH_E;
-        goto err_exit;
-    }
 
-    for (i=0; i<blocks; i++) {
-        IncrementGcmCounter(ctr);
-    }
+#ifdef WOLFSSL_STM32_CUBEMX
+        XMEMSET(&hcryp, 0, sizeof(CRYP_HandleTypeDef));
+        /* load key into correct registers */
+        switch(keySize) {
+            case 16: /* 128-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_128B;
+                break;
+            case 24: /* 192-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_192B;
+                break;
+            case 32: /* 256-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_256B;
+                break;
+            default:
+                break;
+        }
+        hcryp.Instance = CRYP;
+        hcryp.Init.DataType = CRYP_DATATYPE_8B;
+        hcryp.Init.pKey = key;
+        hcryp.Init.pInitVect = initialCounter;
+        hcryp.Init.Header = authInPadded;
+        hcryp.Init.HeaderSize = authInSz;
 
-    /* Tail partial block encryption and padding zero */
-    if (partial != NULL) {
-        status = CRYP_AES_CTR(MODE_ENCRYPT, (uint8_t*)ctr, (uint8_t*)k,
-            keySize*8, (uint8_t*)in + (AES_BLOCK_SIZE * blocks),
-            AES_BLOCK_SIZE, scratch);
+        HAL_CRYP_Init(&hcryp);
+        status = HAL_CRYPEx_AESGCM_Encrypt(&hcryp, (byte*)in, sz,
+                                        out, STM32_HAL_TIMEOUT);
+        if(status != HAL_OK){
+            ret = AES_GCM_AUTH_E;
+            goto err_exit;
+        }
+        /* Compute the authTag */
+        status = HAL_CRYPEx_AESGCM_Finish(&hcryp, sz, tag, STM32_HAL_TIMEOUT);
+        if(status != HAL_OK){
+            ret = AES_GCM_AUTH_E;
+            goto err_exit;
+        }
+        HAL_CRYP_DeInit(&hcryp);
+#else
+        ByteReverseWords((word32*)keyCopy, (word32*)key, keySize);
+        status = CRYP_AES_GCM(MODE_ENCRYPT, (uint8_t*)initialCounter,
+                             (uint8_t*)keyCopy,     keySize * 8,
+                             (uint8_t*)in,          sz,
+                             (uint8_t*)authInPadded,authInSz,
+                             (uint8_t*)out,         tag);
         if (status != SUCCESS) {
             ret = AES_GCM_AUTH_E;
             goto err_exit;
         }
-        XMEMCPY(out+AES_BLOCK_SIZE*blocks, scratch, partial);
-    }
+#endif /* WOLFSSL_STM32_CUBEMX */
+        /* Since authTag may be shorter than AES_BLOCK_SZ, store seperately */
+	XMEMCPY(authTag, tag, authTagSz);
+    } else { /* Plaintext not a multiple. Perform CTR->GHASH */
+        wc_AesSetIV(aes, initialCounter);
+        wc_AesCtrEncrypt(aes, out, in, blocks*AES_BLOCK_SIZE);
 
-    /* Derive auth tag, with dummy decrytion */
-    XMEMCPY(dummy, out, sz);
-    XMEMSET(tag, 0, 16);
-    status = CRYP_AES_GCM(MODE_DECRYPT, (uint8_t*)initialCounter, (uint8_t*)k,
-        keySize*8, (uint8_t*)dummy, sz, (uint8_t*)a, authInSz, dummy, tag);
-    if (status != SUCCESS) {
-        ret = AES_GCM_AUTH_E;
-        goto err_exit;
+        /* Handle partial end block */
+        for (i=0; i<blocks; i++) {
+            IncrementGcmCounter(initialCounter);
+        }
+        wc_AesSetIV(aes, initialCounter);
+        XMEMCPY(scratch, in+blocks*AES_BLOCK_SIZE, partial);
+        wc_AesCtrEncrypt(aes, scratch, scratch, AES_BLOCK_SIZE);
+        XMEMCPY(out+blocks*AES_BLOCK_SIZE, scratch, partial);
+
+        /* Peform the GHASH in software */
+        GHASH(aes, authIn, authInSz, out, sz, authTag, authTagSz);
+
+        /* Encrypt the hash block with the initial IV */
+        XMEMSET(initialCounter, 0, AES_BLOCK_SIZE);
+        XMEMCPY(initialCounter, iv, ivSz);
+        initialCounter[AES_BLOCK_SIZE - 1] = 1;
+        ret = wc_AesEncrypt(aes, initialCounter, scratch);
+        if(ret != 0)
+            goto err_exit;
+        xorbuf(authTag, scratch, authTagSz);
+
     }
-    XMEMCPY(authTag, tag, authTagSz);
-    ret = 0; /* success */
 
 err_exit:
-
-    if (dummy != NULL)
-        XFREE(dummy, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
-    if (a != NULL)
-        XFREE(a,     aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+    /* We only allocate extra memory if authInPadded is not a multiple of 
+     * AES_BLOCK_SZ */
+    if (authInPadded != NULL && authInSz != authPadSz)
+        XFREE(authInPadded, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
     return ret;
-
 #else
 
     word32 blocks = sz / AES_BLOCK_SIZE;
@@ -4533,7 +4568,7 @@ int  wc_AesGcmDecrypt(Aes* aes, byte* out, const byte* in, word32 sz,
 {
 #if defined(FREESCALE_LTC_AES_GCM)
     byte *key;
-    uint32_t keySize;
+    word32 keySize;
     status_t status;
 
     /* argument checks */
@@ -4554,18 +4589,20 @@ int  wc_AesGcmDecrypt(Aes* aes, byte* out, const byte* in, word32 sz,
 
     return (status == kStatus_Success) ? 0 : AES_GCM_AUTH_E;
 
-#elif ((defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO)) && !defined(WOLFSSL_STM32_CUBEMX))
+#elif (defined(STM32F2_CRYPTO) || defined(STM32F4_CRYPTO))
+#ifdef WOLFSSL_STM32_CUBEMX
+    CRYP_HandleTypeDef hcryp;
+#else
+    byte keyCopy[AES_BLOCK_SIZE*2];
+#endif /* WOLFSSL_STM32_CUBEMX */
     byte *key;
-    uint32_t keySize;
-    int  status;
-    byte tag[STM32_TAGSZ];
-    byte scratch[AES_BLOCK_SIZE];
-    byte *c = NULL; /* multiple of Block size cipher buffer */
-    word32 blocks = sz / AES_BLOCK_SIZE;
-    byte *a = NULL;
-    int i;
+    word32 keySize;
+    int  status, ret = 0;
+    int  inPadSz, authPadSz;
+    byte tag[AES_BLOCK_SIZE];
+    byte *inPadded = NULL;
+    byte *authInPadded = NULL;
     byte initialCounter[AES_BLOCK_SIZE];
-    byte k[AES_BLOCK_SIZE*2];
 
     /* argument checks */
     if (aes == NULL || out == NULL || in == NULL || sz == 0 || iv == NULL ||
@@ -4574,48 +4611,116 @@ int  wc_AesGcmDecrypt(Aes* aes, byte* out, const byte* in, word32 sz,
     }
 
     key = (byte*)aes->key;
-
-    status = wc_AesGetKeySize(aes, &keySize);
-    if (status != 0) {
-        return status;
+    ret = wc_AesGetKeySize(aes, &keySize);
+    if (ret != 0) {
+        return ret;
     }
-
-    c = XMALLOC((sz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE, aes->heap,
-        DYNAMIC_TYPE_TMP_BUFFER);
-    a = XMALLOC((authInSz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE, aes->heap,
-        DYNAMIC_TYPE_TMP_BUFFER);
-    if (c == NULL || a == NULL) {
-        ret = MEMORY_E;
-        goto err_exit;
-    }
-    XMEMSET(c, 0, (sz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE);
-    XMEMSET(a, 0, (authInSz / AES_BLOCK_SIZE + 1) * AES_BLOCK_SIZE);
-    XMEMCPY(a, authIn, authInSz);
 
     XMEMSET(initialCounter, 0, AES_BLOCK_SIZE);
     if (ivSz == NONCE_SZ) {
         XMEMCPY(initialCounter, iv, ivSz);
-        initialCounter[AES_BLOCK_SIZE - 1] = 1;
+        /* CRYPT_AES_GCM expects last byte of IV to be 2 */
+        initialCounter[AES_BLOCK_SIZE - 1] = 2;
     }
     else {
         ret = BAD_FUNC_ARG;
         goto err_exit;
     }
 
-    IncrementGcmCounter(initialCounter);
+    /* Need to pad the AAD and input cipher text to a full block size since
+     * CRYP_AES_GCM will assume these are a multiple of AES_BLOCK_SIZE.
+     * It is okay to pad with zeros because GCM does this before GHASH already.
+     * See NIST SP 800-38D */
 
-    ByteReverseWords((word32*)k, (word32*)key, keySize);
+    if(sz%AES_BLOCK_SIZE>0) {
+        inPadSz = (sz/AES_BLOCK_SIZE+1)*AES_BLOCK_SIZE;
+        inPadded = XMALLOC(inPadSz, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+        if(inPadded == NULL) {
+            ret = MEMORY_E;
+            goto err_exit;
+        }
+        XMEMSET(inPadded, 0, inPadSz);
+        XMEMCPY(inPadded, in, sz);
+    } else {
+        inPadSz = sz;
+        inPadded = (byte*)in;
+    }
 
-    XMEMCPY(c, in, sz);
-    status = CRYP_AES_GCM(MODE_DECRYPT, (uint8_t*)initialCounter, (uint8_t*)k,
-        keySize * 8, (uint8_t*)c, sz, (uint8_t*)a, authInSz, c, tag);
+    if(authInSz%AES_BLOCK_SIZE>0) {
+        authPadSz = (authInSz/AES_BLOCK_SIZE+1)*AES_BLOCK_SIZE;
+        authInPadded = XMALLOC(authPadSz, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+        if(authInPadded == NULL) {
+            ret = MEMORY_E;
+            goto err_exit;
+        }
+        XMEMSET(authInPadded, 0, authPadSz);
+        XMEMCPY(authInPadded, authIn, authInSz);
+    } else {
+        authPadSz = authInSz;
+        authInPadded = (byte*)authIn;
+    }
+
+#ifdef WOLFSSL_STM32_CUBEMX
+        XMEMSET(&hcryp, 0, sizeof(CRYP_HandleTypeDef));
+        /* load key into correct registers */
+        switch(keySize) {
+            case 16: /* 128-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_128B;
+                break;
+            case 24: /* 192-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_192B;
+                break;
+            case 32: /* 256-bit key */
+                hcryp.Init.KeySize = CRYP_KEYSIZE_256B;
+                break;
+            default:
+                break;
+        }
+        hcryp.Instance = CRYP;
+        hcryp.Init.DataType = CRYP_DATATYPE_8B;
+        hcryp.Init.pKey = key;
+        hcryp.Init.pInitVect = initialCounter;
+        hcryp.Init.Header = authInPadded;
+        hcryp.Init.HeaderSize = authInSz;
+
+        HAL_CRYP_Init(&hcryp);
+        /* Use inPadded for output buffer instead of
+        * out so that we don't overflow our size. */
+        status = HAL_CRYPEx_AESGCM_Decrypt(&hcryp, (byte*)inPadded,
+                                        sz, inPadded, STM32_HAL_TIMEOUT);
+        if(status != HAL_OK) {
+            ret = AES_GCM_AUTH_E;
+            goto err_exit;
+        }
+        /* Compute the authTag */
+        status = HAL_CRYPEx_AESGCM_Finish(&hcryp, sz, tag, STM32_HAL_TIMEOUT);
+        if(status != HAL_OK) {
+            ret = AES_GCM_AUTH_E;
+            goto err_exit;
+        }
+
+        HAL_CRYP_DeInit(&hcryp);
+#else
+    ByteReverseWords((word32*)keyCopy, (word32*)key, keySize);
+
+    /* Input size and auth size need to be the actual sizes, even though
+     * they are not block aligned, because this length (in bits) is used
+     * in the final GHASH. Use inPadded for output buffer instead of
+     * out so that we don't overflow our size.                         */
+    status = CRYP_AES_GCM(MODE_DECRYPT, (uint8_t*)initialCounter,
+                         (uint8_t*)keyCopy,     keySize * 8,
+                         (uint8_t*)inPadded,    sz,
+                         (uint8_t*)authInPadded,authInSz,
+                         (uint8_t*)inPadded,    tag);
     if (status != SUCCESS) {
         ret = AES_GCM_AUTH_E;
         goto err_exit;
     }
+#endif
 
-    XMEMCPY(out, c, sz);
-    if (XMEMCMP(authTag, tag, authTagSz) == 0) {
+    if (ConstantCompare(authTag, tag, authTagSz) == 0) {
+        /* Only keep the decrypted data if authTag success. */
+        XMEMCPY(out, inPadded, sz);
         ret = 0; /* success */
     }
     else {
@@ -4623,10 +4728,11 @@ int  wc_AesGcmDecrypt(Aes* aes, byte* out, const byte* in, word32 sz,
     }
 
 err_exit:
-    if (c != NULL)
-        XFREE(c, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
-    if (a != NULL)
-        XFREE(a, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+    /* only allocate padding buffers if the inputs are not a multiple of block sz */
+    if (inPadded != NULL && inPadSz != sz)
+        XFREE(inPadded , aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
+    if (authInPadded != NULL && authPadSz != authInSz)
+        XFREE(authInPadded, aes->heap, DYNAMIC_TYPE_TMP_BUFFER);
     return ret;
 
 #else
